@@ -6,6 +6,7 @@ let core_ip = require("core.ip");
 let uci = require("core.uci");
 let connections = require("config.connections");
 let singbox_constants = require("singbox.constants");
+let singbox_dns = require("singbox.dns");
 let nft_state = require("nft.state");
 let nft_sections = require("nft.sections");
 
@@ -19,8 +20,9 @@ const PAUSE_CHAIN = constants.NFT_PAUSE_CHAIN_NAME;
 const FAKEIP_MARK = constants.NFT_FAKEIP_MARK;
 const OUTBOUND_MARK = constants.NFT_OUTBOUND_MARK;
 const ROUTER_MARK = constants.NFT_ROUTER_MARK;
-const FAKEIP4 = singbox_constants.FAKEIP_INET4_RANGE;
-const FAKEIP6 = singbox_constants.FAKEIP_INET6_RANGE;
+// Set from the settings at the start of build(), the subnets are configurable.
+let FAKEIP4 = singbox_constants.FAKEIP_INET4_RANGE;
+let FAKEIP6 = singbox_constants.FAKEIP_INET6_RANGE;
 const TPROXY_PORT = singbox_constants.TPROXY_INBOUND_PORT;
 const TPROXY6_ADDRESS = singbox_constants.TPROXY_INBOUND6_ADDRESS;
 // Before mwan3's rules, which start at 1001.
@@ -329,6 +331,8 @@ function fill_section_sets(section, m) {
 // Returns { script, skipped, kept }; kept names the sets the rule-set worker fills.
 function build() {
     let settings = uci.get_all(CONFIG_NAME, "settings") ?? {};
+    FAKEIP4 = singbox_dns.fakeip_inet4_range(settings);
+    FAKEIP6 = singbox_dns.fakeip_inet6_range(settings);
     let sections = uci.section_objects(CONFIG_NAME, "section");
     let planned = nft_sections.with_priority_sets(sections);
     if (planned.error != "")

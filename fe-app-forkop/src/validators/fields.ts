@@ -1,6 +1,7 @@
 import { message } from './messages';
 import { asciiHostname, validAsciiDomain } from './validateDomain';
 import { isIPv4, isIPv6 } from './validateIp';
+import { validateSubnet } from './validateSubnet';
 
 // LuCI datatype checks in the page's words; an empty value is left to the field.
 
@@ -55,4 +56,24 @@ export function ipv4Field(_sectionId: string, value: unknown) {
 export function ipv6Field(_sectionId: string, value: unknown) {
   const text = `${value ?? ''}`.trim();
   return !text || isIPv6(text) ? true : message.invalidIp();
+}
+
+// A subnet of one family written with a prefix length; an empty value is left to the field.
+export function cidrField(family: 4 | 6) {
+  return (_sectionId: string, value: unknown) => {
+    const text = `${value ?? ''}`.trim();
+    if (!text) {
+      return true;
+    }
+    const check = validateSubnet(text);
+    if (check !== true) {
+      return check;
+    }
+    const [ip, prefix] = text.split('/');
+    return prefix !== undefined && (family === 4 ? isIPv4(ip) : isIPv6(ip))
+      ? true
+      : family === 4
+        ? _('Use an IPv4 CIDR subnet')
+        : _('Use an IPv6 CIDR subnet');
+  };
 }

@@ -19,6 +19,26 @@ function settings(extra) {
     };
 }
 
+function fakeip_server(extra) {
+    let config = build({
+        settings: settings(extra),
+        section: [ { ".name": "proxy", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "proxy.example" } ],
+        server: []
+    });
+    return q.dns_server(config, (r) => r.tag == "fakeip-server");
+}
+
+t.test("the FakeIP DNS server uses the built-in subnets unless the settings give others", () => {
+    let server = fakeip_server();
+    t.eq([ server.inet4_range, server.inet6_range ], [ "198.18.0.0/16", "fc00::/112" ]);
+
+    server = fakeip_server({ fakeip_range: "", fakeip6_range: "" });
+    t.eq([ server.inet4_range, server.inet6_range ], [ "198.18.0.0/16", "fc00::/112" ], "empty values keep the defaults");
+
+    server = fakeip_server({ fakeip_range: "198.18.0.0/15", fakeip6_range: "fd00:18::/64" });
+    t.eq([ server.inet4_range, server.inet6_range ], [ "198.18.0.0/15", "fd00:18::/64" ]);
+});
+
 t.test("a lone connection section without sources leaves nothing usable", () => {
     let e = t.throws(() => build({
         settings: settings(),

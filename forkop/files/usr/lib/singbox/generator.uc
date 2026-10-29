@@ -261,8 +261,8 @@ function base_config(settings, service_address) {
     push(dns_servers, {
         type: "fakeip",
         tag: runtime_constants.FAKEIP_DNS_SERVER_TAG,
-        inet4_range: runtime_constants.FAKEIP_INET4_RANGE,
-        inet6_range: runtime_constants.FAKEIP_INET6_RANGE
+        inet4_range: runtime_dns.fakeip_inet4_range(settings),
+        inet6_range: runtime_dns.fakeip_inet6_range(settings)
     });
 
     let inbounds = [

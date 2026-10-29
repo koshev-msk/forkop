@@ -28,6 +28,20 @@ function before(lines, first, second, label) {
 
 const T = "add rule inet ForkopTable ";
 
+t.test("the FakeIP subnets of the settings replace the built-in ones in the table", () => {
+    let lines = script_lines({ settings: { fakeip_range: "198.18.0.0/15", fakeip6_range: "fd00:18::/64" } });
+    has(lines, T + "mangle iifname @forkop_interfaces ip6 daddr @localv6 ip6 daddr != fd00:18::/64 return", "the IPv6 subnet is excluded from the local return");
+    for (let pair in [ [ "ip", "198.18.0.0/15" ], [ "ip6", "fd00:18::/64" ] ])
+        for (let proto in [ "tcp", "udp" ])
+            has(lines, T + "mangle_output " + pair[0] + " daddr " + pair[1] + " meta l4proto " + proto + " meta mark set 0x10000000 counter",
+                "the router's own FakeIP traffic");
+    lacks(lines, "198.18.0.0/16");
+    lacks(lines, "fc00::/112");
+
+    lines = script_lines({ settings: {} });
+    has(lines, T + "mangle iifname @forkop_interfaces ip6 daddr @localv6 ip6 daddr != fc00::/112 return", "without the settings the built-in subnets stay");
+});
+
 t.test("the base table captures the source interfaces, FakeIP and the TProxy inbounds", () => {
     let lines = script_lines({ settings: { source_network_interfaces: "br-lan tun0" } });
     t.eq(lines[0], "add table inet ForkopTable");

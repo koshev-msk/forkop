@@ -370,6 +370,14 @@ function validate_dns_settings(settings, sections, context) {
     if (!contains([ "prefer_ipv4", "ipv4_only", "prefer_ipv6", "ipv6_only" ], dns_strategy))
         fail_validation("Unsupported DNS strategy '" + dns_strategy + "'. Use prefer_ipv4, ipv4_only, prefer_ipv6, or ipv6_only");
 
+    let fakeip_range = trim(as_string(option(settings, "fakeip_range", "")));
+    if (fakeip_range != "" && !core_ip.valid_ipv4_cidr(fakeip_range))
+        fail_validation("Invalid FakeIP range '" + fakeip_range + "'. Use an IPv4 CIDR subnet");
+
+    let fakeip6_range = trim(as_string(option(settings, "fakeip6_range", "")));
+    if (fakeip6_range != "" && !core_ip.valid_ipv6_cidr(fakeip6_range))
+        fail_validation("Invalid FakeIP IPv6 range '" + fakeip6_range + "'. Use an IPv6 CIDR subnet");
+
     for (let strategy_option in [ [ "dns_main_fallback_strategy", "Main DNS Query Mode" ], [ "dns_bootstrap_fallback_strategy", "Bootstrap DNS Query Mode" ] ]) {
         let fallback_strategy = option(settings, strategy_option[0], "parallel");
         if (!contains([ "sequential", "parallel" ], fallback_strategy))

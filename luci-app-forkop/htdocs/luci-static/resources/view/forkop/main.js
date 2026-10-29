@@ -25140,6 +25140,20 @@ function ipv6Field(_sectionId, value) {
   const text8 = `${value ?? ""}`.trim();
   return !text8 || isIPv6(text8) ? true : message.invalidIp();
 }
+function cidrField(family) {
+  return (_sectionId, value) => {
+    const text8 = `${value ?? ""}`.trim();
+    if (!text8) {
+      return true;
+    }
+    const check = validateSubnet(text8);
+    if (check !== true) {
+      return check;
+    }
+    const [ip, prefix] = text8.split("/");
+    return prefix !== void 0 && (family === 4 ? isIPv4(ip) : isIPv6(ip)) ? true : family === 4 ? _("Use an IPv4 CIDR subnet") : _("Use an IPv6 CIDR subnet");
+  };
+}
 
 // src/forkop/tabs/sections/tunnels/openvpnForm.ts
 function secondsOption(section2, name, title, description, placeholder) {
@@ -29361,6 +29375,24 @@ function addDnsOptions(section2) {
   o.value("ipv6_only", _("IPv6 only"));
   o.default = "prefer_ipv4";
   o.rmempty = false;
+  o = section2.option(
+    form.Value,
+    "fakeip_range",
+    _("FakeIP Range"),
+    _("IPv4 subnet used for FakeIP DNS mapping (default: 198.18.0.0/16)")
+  );
+  o.placeholder = "198.18.0.0/16";
+  o.rmempty = true;
+  o.validate = cidrField(4);
+  o = section2.option(
+    form.Value,
+    "fakeip6_range",
+    _("FakeIP IPv6 Range"),
+    _("IPv6 subnet used for FakeIP DNS mapping (default: fc00::/112)")
+  );
+  o.placeholder = "fc00::/112";
+  o.rmempty = true;
+  o.validate = cidrField(6);
   o = section2.option(
     form.Flag,
     "dns_detour_enabled",

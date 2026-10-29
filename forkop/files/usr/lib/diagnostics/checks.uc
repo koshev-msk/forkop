@@ -224,8 +224,8 @@ function check_answer(text) {
 }
 
 function in_fakeip_range(address) {
-    return core_ip.prefix_contains(singbox_constants.FAKEIP_INET4_RANGE, address) ||
-        core_ip.prefix_contains(singbox_constants.FAKEIP_INET6_RANGE, address);
+    return core_ip.prefix_contains(runtime_dns.fakeip_inet4_range(settings()), address) ||
+        core_ip.prefix_contains(runtime_dns.fakeip_inet6_range(settings()), address);
 }
 
 // The router looks the check domain up through its resolver, which must hand out a FakeIP

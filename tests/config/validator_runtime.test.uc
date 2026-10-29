@@ -369,6 +369,27 @@ t.test("bad DNS strategy", () => {
     }, "Unsupported DNS strategy 'auto'");
 });
 
+t.test("FakeIP subnets", () => {
+    v.accepts({
+        "settings": {
+            "fakeip_range": "198.18.0.0/15",
+            "fakeip6_range": "fd00:18::/64"
+        },
+        "section": []
+    });
+    v.accepts({
+        "settings": {
+            "fakeip_range": "",
+            "fakeip6_range": ""
+        },
+        "section": []
+    });
+    for (let range in [ "198.18.0.0", "198.18.0.0/33", "198.18.0/16", "fc00::/112", "example.com/16" ])
+        v.refuses({ "settings": { "fakeip_range": range }, "section": [] }, "Invalid FakeIP range '" + range + "'");
+    for (let range in [ "fc00::", "fc00::/129", "198.18.0.0/16", "fc00:::/64" ])
+        v.refuses({ "settings": { "fakeip6_range": range }, "section": [] }, "Invalid FakeIP IPv6 range '" + range + "'");
+});
+
 t.test("empty main DNS list", () => {
     v.refuses({
         "settings": {

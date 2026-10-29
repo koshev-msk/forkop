@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-27 16:04+0300\n"
-"PO-Revision-Date: 2026-10-27 16:04+0300\n"
+"POT-Creation-Date: 2026-10-29 05:17+0000\n"
+"PO-Revision-Date: 2026-10-29 05:17+0000\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -950,6 +950,12 @@ msgstr "Ошибка обновления подписок"
 msgid "Failed to upload the file: %s"
 msgstr "Не удалось загрузить файл на роутер: %s"
 
+msgid "FakeIP IPv6 Range"
+msgstr "Подсеть FakeIP IPv6"
+
+msgid "FakeIP Range"
+msgstr "Подсеть FakeIP"
+
 msgid "Fallback"
 msgstr "Fallback"
 
@@ -1334,8 +1340,14 @@ msgstr "IP-адрес или имя устройства. Туннель не в
 msgid "IPv4 only"
 msgstr "Только IPv4"
 
+msgid "IPv4 subnet used for FakeIP DNS mapping (default: 198.18.0.0/16)"
+msgstr "IPv4 подсеть для FakeIP сопоставления DNS (по умолчанию: 198.18.0.0/16)"
+
 msgid "IPv6 only"
 msgstr "Только IPv6"
+
+msgid "IPv6 subnet used for FakeIP DNS mapping (default: fc00::/112)"
+msgstr "IPv6 подсеть для FakeIP сопоставления DNS (по умолчанию: fc00::/112)"
 
 msgid "Issues detected"
 msgstr "Обнаружены проблемы"
@@ -2782,6 +2794,12 @@ msgstr "Настройки URLTest"
 
 msgid "URLTest: %s"
 msgstr "URLTest: %s"
+
+msgid "Use an IPv4 CIDR subnet"
+msgstr "Используйте IPv4 подсеть в формате CIDR"
+
+msgid "Use an IPv6 CIDR subnet"
+msgstr "Используйте IPv6 подсеть в формате CIDR"
 
 msgid "Use pin-sha256 instead of a certificate SHA-256"
 msgstr "Нужен pin-sha256, а не SHA-256 сертификата"
