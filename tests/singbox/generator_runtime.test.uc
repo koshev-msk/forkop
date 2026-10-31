@@ -19,46 +19,6 @@ function settings(extra) {
     };
 }
 
-function fakeip_server(extra) {
-    let config = build({
-        settings: settings(extra),
-        section: [ { ".name": "proxy", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "proxy.example" } ],
-        server: []
-    });
-    return q.dns_server(config, (r) => r.tag == "fakeip-server");
-}
-
-t.test("the FakeIP DNS server uses the built-in subnets unless the settings give others", () => {
-    let server = fakeip_server();
-    t.eq([ server.inet4_range, server.inet6_range ], [ "198.18.0.0/16", "fc00::/112" ]);
-
-    server = fakeip_server({ fakeip_range: "", fakeip6_range: "" });
-    t.eq([ server.inet4_range, server.inet6_range ], [ "198.18.0.0/16", "fc00::/112" ], "empty values keep the defaults");
-
-    server = fakeip_server({ fakeip_range: "198.18.0.0/15", fakeip6_range: "fd00:18::/64" });
-    t.eq([ server.inet4_range, server.inet6_range ], [ "198.18.0.0/15", "fd00:18::/64" ]);
-});
-
-function final_route(sections) {
-    return build({ settings: settings(), section: sections, server: [] }).route.final;
-}
-
-t.test("route.final is the last connection section with default_route, direct otherwise", () => {
-    let first = { ".name": "first", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "first.example" };
-    let second = { ".name": "second", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "second.example" };
-
-    t.eq(final_route([ first, second ]), "direct-out", "without the flag unmatched traffic leaves directly");
-    t.eq(final_route([ { ...first, default_route: "1" }, second ]), "first");
-    t.eq(final_route([ { ...first, default_route: "1" }, { ...second, default_route: "1" } ]), "second", "the last one wins");
-    t.eq(final_route([ { ...first, default_route: "0" }, second ]), "direct-out", "a cleared flag does nothing");
-});
-
-t.test("default_route is ignored outside connection sections", () => {
-    let proxy = { ".name": "proxy", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "proxy.example" };
-    let bypass = { ".name": "bypass", enabled: "1", action: "bypass", destinations: "bypass.example", default_route: "1" };
-    t.eq(final_route([ proxy, bypass ]), "direct-out");
-});
-
 t.test("a lone connection section without sources leaves nothing usable", () => {
     let e = t.throws(() => build({
         settings: settings(),
@@ -387,7 +347,7 @@ function matcher_fixture() {
 t.test("inbounds, DNS servers and base routing of a matcher-heavy configuration", () => {
     let m = matcher_fixture();
     t.eq(m.dns.strategy, "prefer_ipv6");
-    t.ok(q.dns_server(m, (r) => r.tag == "fakeip-server" && r.inet6_range == "fc00::/112") != null);
+    t.ok(q.dns_server(m, (r) => r.tag == "fakeip-server" && r.inet6_range == "2001:2::/112") != null);
     t.eq(q.inbound(m, "tproxy6-in").listen, "::1");
     t.eq([ q.inbound(m, "system-in").listen_port, q.inbound(m, "system6-in").listen_port ], [ 1604, 1604 ]);
     t.eq(q.route_rule(m, (r) => r.action == "reject" && r.ip_version == 6), null, "IPv6 traffic is not rejected globally");
@@ -558,18 +518,39 @@ t.test("a section's own destinations and its rule sets each select traffic on th
     t.ok(has(listed.rules[1].port, 443), "the section's ports still narrow the rule set");
 });
 
-t.test("a FakeIP answer reads only the domains of a rule set, a real answer the whole set", () => {
+// The core refuses a set of subnets alone in a DNS rule reading the whole set once it loads the set.
+t.test("a section's DNS rule reads only the domains of its rule sets, its route rule the whole sets", () => {
     let d = build({ settings: settings(), section: [
         { ".name": "proxy", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], rule_set: [ "https://example.com/ports.srs" ] },
         { ".name": "deny", enabled: "1", action: "block", community_lists: [ "discord" ] },
-        { ".name": "direct", enabled: "1", action: "bypass", rule_set: [ "https://example.com/direct.srs" ] } ] });
+        { ".name": "direct", enabled: "1", action: "bypass", rule_set: [ "https://example.com/direct.srs" ] },
+        { ".name": "ru_ip", enabled: "1", action: "bypass", community_lists: [ "telegram" ], rule_set_with_subnets: [ "https://example.com/geoip-ru.srs" ] } ] });
     let proxied = q.dns_rule(d, (r) => has(r.rule_set, q.ruleset_url(d, "https://example.com/ports.srs").tag));
     t.eq([ proxied.server, proxied.rule_set_domain_only ], [ "fakeip-server", true ]);
     let denied = q.dns_rule(d, (r) => has(r.rule_set, "deny-discord-community-ruleset"));
     t.eq([ denied.server, denied.rule_set_domain_only ], [ "fakeip-server", true ]);
     let direct = q.dns_rule(d, (r) => has(r.rule_set, q.ruleset_url(d, "https://example.com/direct.srs").tag));
-    t.eq([ direct.server, direct.rule_set_domain_only ], [ "dns-server", null ],
-        "a bypass answer is checked against the set's subnets, which keeps a domain resolving into one direct");
+    t.eq([ direct.server, direct.rule_set_domain_only ], [ "dns-server", true ]);
+    let geoip = q.ruleset_url(d, "https://example.com/geoip-ru.srs").tag;
+    let subnets = q.dns_rule(d, (r) => has(r.rule_set, geoip));
+    t.eq([ subnets.server, subnets.rule_set_domain_only ], [ "dns-server", true ]);
+    for (let rule in d.dns.rules)
+        if (rule.rule_set != null)
+            t.eq(rule.rule_set_domain_only, true, sprintf("%J", rule));
+    let route = q.route_rule(d, (r) => has(r.rule_set, geoip));
+    t.eq([ route.outbound, route.rule_set_domain_only ], [ "direct-out", null ], "the subnets still select traffic");
+});
+
+t.test("the FakeIP check goes direct ahead of every section, so its address is the direct one", () => {
+    for (let section in [ { ports: [ "1-65535" ] }, { fully_routed_ips: [ "@system" ] } ]) {
+        let d = build({ settings: settings(), section: [ { ".name": "proxy", enabled: "1", action: "connection",
+            outbound_jsons: [ "{\"type\":\"direct\"}" ], ...section } ] });
+        let check_at = q.route_rule_index(d, (r) => r.domain == "fakeip.podkop.fyi");
+        let check = d.route.rules[check_at];
+        t.eq([ check.action, check.outbound, check.override_port, check.inbound ], [ "route", "direct-out", 8443, null ]);
+        t.ok(check_at < q.route_rule_index(d, (r) => r.outbound == "proxy" && r.domain == null), sprintf("%J", section));
+        t.eq(q.route_rule(d, (r) => r.domain == "ip.podkop.fyi").outbound, "proxy", "the exit check still takes the section");
+    }
 });
 
 t.test("ports on their own select traffic in one rule", () => {

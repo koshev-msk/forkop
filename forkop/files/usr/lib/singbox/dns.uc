@@ -251,17 +251,6 @@ function config(settings) {
     return { servers };
 }
 
-// The FakeIP subnets default to the built-in ranges; an empty setting keeps them.
-function fakeip_inet4_range(settings) {
-    let range = trim(as_string(option(settings, "fakeip_range", "")));
-    return range != "" ? range : runtime_constants.FAKEIP_INET4_RANGE;
-}
-
-function fakeip_inet6_range(settings) {
-    let range = trim(as_string(option(settings, "fakeip6_range", "")));
-    return range != "" ? range : runtime_constants.FAKEIP_INET6_RANGE;
-}
-
 function default_domain_resolver(settings) {
     return bool_option(settings, "dns_detour_enabled", false)
         ? runtime_constants.BOOTSTRAP_DNS_SERVER_TAG
@@ -272,8 +261,6 @@ return {
     add_uri_server_group,
     config,
     default_domain_resolver,
-    fakeip_inet4_range,
-    fakeip_inet6_range,
     parse_server_uri,
     static_hosts,
     server_list

@@ -57,12 +57,15 @@ var DOMAIN_LIST_OPTIONS = {
   chatgpt: "ChatGPT",
   claude: "Claude",
   cloudflare: "Cloudflare",
+  digitalocean: "DigitalOcean",
   discord: "Discord",
   facebook: "Facebook",
   gemini: "Gemini",
   github: "GitHub",
   google_play: "Google Play",
+  hetzner: "Hetzner",
   instagram: "Instagram",
+  ovh: "OVH",
   roblox: "Roblox",
   spotify: "Spotify",
   supercell: "Supercell",
@@ -10153,6 +10156,7 @@ function showTailscaleServerDetailsModal(sectionId) {
 // src/forkop/tabs/dashboard/initController.ts
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
 var COLLAPSED_SECTIONS_STORAGE_KEY = "forkop:dashboard-collapsed-sections:v1";
+var LATENCY_SORTED_SECTIONS_STORAGE_KEY = "forkop:dashboard-latency-sorted-sections:v1";
 var SECTIONS_LATENCY_REFRESH_INTERVAL_MS = 2e3;
 var SECTIONS_REFRESH_BACKOFF_MAX_MS = 6e4;
 var SECTIONS_REFRESH_DUTY_MAX_MS = 3e4;
@@ -10178,19 +10182,19 @@ var connectionsSocketUrl = "";
 var lastPolledTotals = null;
 var pageUnloading = false;
 var latencyRequests = /* @__PURE__ */ new Set();
-var latencySortedSections = /* @__PURE__ */ new Set();
-var collapsedSections = readCollapsedSections();
+var latencySortedSections = readSectionNames(
+  LATENCY_SORTED_SECTIONS_STORAGE_KEY
+);
+var collapsedSections = readSectionNames(COLLAPSED_SECTIONS_STORAGE_KEY);
 var selectorRequests = /* @__PURE__ */ new Set();
 var toolbarActions = /* @__PURE__ */ new Set();
 var fallbackPinRequests = /* @__PURE__ */ new Set();
 var activeDetailsModal = null;
 var exitPanel = null;
 var exitLookupId = 0;
-function readCollapsedSections() {
+function readSectionNames(storageKey) {
   try {
-    const stored = JSON.parse(
-      getLocalStorage()?.getItem(COLLAPSED_SECTIONS_STORAGE_KEY) || "[]"
-    );
+    const stored = JSON.parse(getLocalStorage()?.getItem(storageKey) || "[]");
     return new Set(
       Array.isArray(stored) ? stored.filter((name) => typeof name === "string") : []
     );
@@ -10198,14 +10202,14 @@ function readCollapsedSections() {
     return /* @__PURE__ */ new Set();
   }
 }
-function writeCollapsedSections() {
+function writeSectionNames(storageKey, names) {
   const shown2 = new Set(
     store.get().sectionsWidget.data.map((section2) => section2.sectionName)
   );
   try {
     getLocalStorage()?.setItem(
-      COLLAPSED_SECTIONS_STORAGE_KEY,
-      JSON.stringify([...collapsedSections].filter((name) => shown2.has(name)))
+      storageKey,
+      JSON.stringify([...names].filter((name) => shown2.has(name)))
     );
   } catch {
   }
@@ -10301,6 +10305,7 @@ function handleSortByLatency(sectionName, enabled) {
   } else {
     latencySortedSections.delete(sectionName);
   }
+  writeSectionNames(LATENCY_SORTED_SECTIONS_STORAGE_KEY, latencySortedSections);
   void renderSectionsWidget();
 }
 function handleCollapsedChange(sectionName, collapsed) {
@@ -10309,7 +10314,7 @@ function handleCollapsedChange(sectionName, collapsed) {
   } else {
     collapsedSections.delete(sectionName);
   }
-  writeCollapsedSections();
+  writeSectionNames(COLLAPSED_SECTIONS_STORAGE_KEY, collapsedSections);
   void renderSectionsWidget();
 }
 function widgetsAreLive() {
@@ -19279,16 +19284,6 @@ var JSON_ENDPOINT_PLACEHOLDER = [
   '  "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="',
   "}"
 ].join("\n");
-var CONNECTIONS_BLOCKED_INTERFACES = [
-  "br-lan",
-  "eth0",
-  "eth1",
-  "wan",
-  "phy0-ap0",
-  "phy1-ap0",
-  "pppoe-wan",
-  "lan"
-];
 var CONNECTION_OUTBOUND_SOURCES = [
   "connection_link",
   "subscription_url",
@@ -23774,30 +23769,120 @@ function validateFallbackGroupItemsBeforeSave(section_id, values) {
   return true;
 }
 
-// src/forkop/tabs/sections/interfaces.ts
-function isConnectionNetworkInterfaceAllowed(deviceName, device) {
-  if (CONNECTIONS_BLOCKED_INTERFACES.includes(deviceName)) {
-    return false;
-  }
-  if (!device) {
-    return true;
-  }
-  const type = device.getType();
-  const isWireless = type === "wifi" || type === "wireless" || type.indexOf("wlan") >= 0;
-  return !isWireless;
+// src/forkop/cbi/outgoingDevices.ts
+var callNetworkInterfaceDump3 = rpc.declare({
+  object: "network.interface",
+  method: "dump",
+  expect: { interface: [] }
+});
+var TUNNEL_PROTOCOLS = [
+  "wireguard",
+  "amneziawg",
+  "openvpn",
+  "openconnect",
+  "vpnc",
+  "sstp",
+  "l2tp",
+  "pptp",
+  "gre",
+  "gretap",
+  "grev6",
+  "grev6tap",
+  "ipip",
+  "6in4",
+  "6to4",
+  "6rd",
+  "dslite",
+  "vti",
+  "vtiv6",
+  "xfrm",
+  "vxlan",
+  "vxlan6"
+];
+var PPP_PROTOCOLS = ["ppp", "pppoe", "pppoa", "pptp", "l2tp", "3g"];
+var TUNNEL_DEVICE_NAME = /^(tun|tap|wg|awg|ovpn|tailscale|zt)/;
+var TUNNEL_DEVICE_TYPES = ["wireguard", "tunnel"];
+var DEVICE_NAME = /^[^\s:/%@]{1,15}$/;
+function hasDefaultRoute(networkInterface) {
+  return (networkInterface.route ?? []).some(
+    (route) => route.mask === 0 && (route.target === "0.0.0.0" || route.target === "::")
+  );
 }
-function renderNetworkInterfaceChoice(device) {
-  const name = device.getName();
-  const type = device.getType();
+function layer3Device(networkInterface, pppName2) {
+  if (networkInterface.l3_device) {
+    return networkInterface.l3_device;
+  }
+  const proto = networkInterface.proto ?? "";
+  if (PPP_PROTOCOLS.includes(proto)) {
+    return pppName2(networkInterface.interface) || `${proto}-${networkInterface.interface}`;
+  }
+  const device = networkInterface.device ?? "";
+  return DEVICE_NAME.test(device) ? device : "";
+}
+function outgoingDevices(interfaces, devices, masqueradeNetworks2, pppName2 = () => "") {
+  const networksOf = /* @__PURE__ */ new Map();
+  const offered = /* @__PURE__ */ new Set();
+  interfaces.forEach((networkInterface) => {
+    const device = layer3Device(networkInterface, pppName2);
+    if (!device || device === "lo") {
+      return;
+    }
+    networksOf.set(device, [
+      ...networksOf.get(device) ?? [],
+      networkInterface.interface
+    ]);
+    if (masqueradeNetworks2.includes(networkInterface.interface) || hasDefaultRoute(networkInterface) || TUNNEL_PROTOCOLS.includes(networkInterface.proto ?? "")) {
+      offered.add(device);
+    }
+  });
+  devices.forEach((device) => {
+    if (TUNNEL_DEVICE_TYPES.includes(device.type) || TUNNEL_DEVICE_NAME.test(device.name)) {
+      offered.add(device.name);
+    }
+  });
+  const known = devices.map((device) => device.name);
+  return [
+    ...known.filter((name) => offered.has(name)),
+    ...[...offered].filter((name) => !known.includes(name))
+  ].map((name) => ({ name, networks: networksOf.get(name) ?? [] }));
+}
+function masqueradeNetworks() {
+  return uci.sections("firewall", "zone").filter((zone) => zone.masq === "1").flatMap((zone) => L.toArray(zone.network));
+}
+function pppName(name) {
+  return `${uci.get("network", name, "pppname") ?? ""}`.trim();
+}
+function loadOutgoingDevices(devices) {
+  return Promise.all([
+    callNetworkInterfaceDump3(),
+    uci.load("firewall").catch(() => null)
+  ]).then(
+    ([interfaces]) => outgoingDevices(
+      Array.isArray(interfaces) ? interfaces : [],
+      devices.map((device) => ({
+        name: device.getName(),
+        type: device.getType()
+      })),
+      masqueradeNetworks(),
+      pppName
+    )
+  );
+}
+
+// src/forkop/tabs/sections/interfaces.ts
+function renderNetworkInterfaceChoice(choice, device) {
+  const type = device ? device.getType() : "ethernet";
+  const title = device ? device.getI18n() : '%s: "%s"'.format(_("Absent Interface"), choice.name);
+  const networks = choice.networks.length ? " (%s)".format(choice.networks.join(", ")) : "";
   return textE([
     textE("img", {
-      title: device.getI18n(),
+      title,
       src: L.resource(
-        "icons/%s%s.svg".format(type, device.isUp() ? "" : "_disabled")
+        "icons/%s%s.svg".format(type, device?.isUp() ? "" : "_disabled")
       )
     }),
-    textE("span", { class: "hide-open" }, [name]),
-    textE("span", { class: "hide-close" }, [device.getI18n()])
+    textE("span", { class: "hide-open" }, [choice.name]),
+    textE("span", { class: "hide-close" }, [title + networks])
   ]);
 }
 function renderNetworkInterfaceListItem(device, fallbackName) {
@@ -23812,18 +23897,21 @@ function renderNetworkInterfaceListItem(device, fallbackName) {
     textE("span", {}, [name])
   ]);
 }
-function refreshNetworkInterfaceOptionValues(option2) {
+function refreshNetworkInterfaceOptionValues(option2, choices) {
   option2.keylist = [];
   option2.vallist = [];
   option2.interfaceDeviceMap = {};
   (option2.devices || []).forEach((device) => {
-    const name = device.getName();
-    const type = device.getType();
-    if (name === "lo" || type === "alias" || !isConnectionNetworkInterfaceAllowed(name, device)) {
-      return;
-    }
-    option2.value(name, renderNetworkInterfaceChoice(device));
-    option2.interfaceDeviceMap[name] = device;
+    option2.interfaceDeviceMap[device.getName()] = device;
+  });
+  choices.forEach((choice) => {
+    option2.value(
+      choice.name,
+      renderNetworkInterfaceChoice(
+        choice,
+        option2.interfaceDeviceMap[choice.name]
+      )
+    );
   });
 }
 var InterfaceSettingsDynamicList = SettingsDynamicList.extend({
@@ -23831,8 +23919,12 @@ var InterfaceSettingsDynamicList = SettingsDynamicList.extend({
     return network.getDevices().then(
       L.bind(function(devices) {
         this.devices = devices || [];
-        refreshNetworkInterfaceOptionValues(this);
-        return this.super("load", section_id);
+        return loadOutgoingDevices(this.devices).then(
+          L.bind(function(choices) {
+            refreshNetworkInterfaceOptionValues(this, choices);
+            return this.super("load", section_id);
+          }, this)
+        );
       }, this)
     );
   },
@@ -25139,20 +25231,6 @@ function ipv4Field(_sectionId, value) {
 function ipv6Field(_sectionId, value) {
   const text8 = `${value ?? ""}`.trim();
   return !text8 || isIPv6(text8) ? true : message.invalidIp();
-}
-function cidrField(family) {
-  return (_sectionId, value) => {
-    const text8 = `${value ?? ""}`.trim();
-    if (!text8) {
-      return true;
-    }
-    const check = validateSubnet(text8);
-    if (check !== true) {
-      return check;
-    }
-    const [ip, prefix] = text8.split("/");
-    return prefix !== void 0 && (family === 4 ? isIPv4(ip) : isIPv6(ip)) ? true : family === 4 ? _("Use an IPv4 CIDR subnet") : _("Use an IPv6 CIDR subnet");
-  };
 }
 
 // src/forkop/tabs/sections/tunnels/openvpnForm.ts
@@ -27466,7 +27544,7 @@ function createSectionContent(section2) {
     InterfaceSettingsDynamicList,
     "interfaces",
     _("Network Interface"),
-    _("An OpenWrt network interface")
+    _("An OpenWrt uplink or tunnel interface")
   );
   o.depends("action", "connection");
   o.rmempty = true;
@@ -27602,19 +27680,6 @@ function createSectionContent(section2) {
     return renderChildItemLabel(this, section_id, itemId);
   };
   o.onListChange = refreshLiveChoiceWidgets;
-  o = section2.taboption(
-    "settings",
-    form.Flag,
-    "default_route",
-    _("Use as default route"),
-    _(
-      "Send all traffic not matched by other sections through this section. If several sections enable this, the last one wins."
-    )
-  );
-  o.depends("action", "connection");
-  o.default = "0";
-  o.rmempty = false;
-  o.modalonly = true;
   const destinationOption = addDestinationField(
     section2,
     "destinations",
@@ -29389,24 +29454,6 @@ function addDnsOptions(section2) {
   o.default = "prefer_ipv4";
   o.rmempty = false;
   o = section2.option(
-    form.Value,
-    "fakeip_range",
-    _("FakeIP Range"),
-    _("IPv4 subnet used for FakeIP DNS mapping (default: 198.18.0.0/16)")
-  );
-  o.placeholder = "198.18.0.0/16";
-  o.rmempty = true;
-  o.validate = cidrField(4);
-  o = section2.option(
-    form.Value,
-    "fakeip6_range",
-    _("FakeIP IPv6 Range"),
-    _("IPv6 subnet used for FakeIP DNS mapping (default: fc00::/112)")
-  );
-  o.placeholder = "fc00::/112";
-  o.rmempty = true;
-  o.validate = cidrField(6);
-  o = section2.option(
     form.Flag,
     "dns_detour_enabled",
     _("DNS through section"),
@@ -29499,31 +29546,22 @@ function addNetworkOptions(section2) {
     widgets.DeviceSelect,
     "output_network_interface",
     _("Output Network Interface"),
-    _("Select the network interface to which the traffic will originate")
+    _("An OpenWrt uplink or tunnel interface")
   );
   o.noaliases = true;
   o.multiple = false;
   o.depends("enable_output_network_interface", "1");
-  o.filter = function(section_id, value) {
-    const blockedInterfaces = ["br-lan"];
-    if (blockedInterfaces.includes(value)) {
-      return false;
-    }
-    if (value.startsWith("lan")) {
-      return false;
-    }
-    if (value.startsWith("tun") || value.startsWith("wg") || value.startsWith("vpn") || value.startsWith("awg") || value.startsWith("oc")) {
-      return false;
-    }
-    const device = this.devices.find(
-      (dev) => dev.getName() === value
-    );
-    if (!device) {
-      return true;
-    }
-    const type = device.getType();
-    const isWireless = type === "wifi" || type === "wireless" || type.includes("wlan");
-    return !isWireless;
+  o.load = function(section_id) {
+    return Promise.all([
+      widgets.DeviceSelect.prototype.load.call(this, section_id),
+      network.getDevices().then(loadOutgoingDevices)
+    ]).then(([value, choices]) => {
+      this.outgoingDeviceNames = choices.map((choice) => choice.name);
+      return value;
+    });
+  };
+  o.filter = function(_section_id, value) {
+    return (this.outgoingDeviceNames ?? []).includes(value);
   };
   o = section2.option(
     form.Flag,

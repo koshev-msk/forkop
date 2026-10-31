@@ -167,7 +167,7 @@ function clash_api_config(settings, service_address) {
     if (secret != "")
         result.secret = secret;
     if (bool_option(settings, "enable_yacd", false)) {
-        result.external_ui = "ui";
+        result.external_ui = runtime_constants.CLASH_API_UI_DIRECTORY;
         result.external_ui_download_detour = runtime_constants.DIRECT_OUTBOUND_TAG;
     }
     return result;
@@ -261,8 +261,8 @@ function base_config(settings, service_address) {
     push(dns_servers, {
         type: "fakeip",
         tag: runtime_constants.FAKEIP_DNS_SERVER_TAG,
-        inet4_range: runtime_dns.fakeip_inet4_range(settings),
-        inet6_range: runtime_dns.fakeip_inet6_range(settings)
+        inet4_range: runtime_constants.FAKEIP_INET4_RANGE,
+        inet6_range: runtime_constants.FAKEIP_INET6_RANGE
     });
 
     let inbounds = [
@@ -926,6 +926,20 @@ function usable_group_descriptors(descriptors, group_tags) {
     return result;
 }
 
+// A URLTest a Fallback includes is one of its members, so the section goes through the Fallback.
+function default_group_tag(descriptors) {
+    let members = {};
+    for (let descriptor in descriptors)
+        if (descriptor.kind == "fallback")
+            for (let level in array_or_empty(descriptor.outbound.groups))
+                for (let tag_name in array_or_empty(level.outbounds))
+                    members[tag_name] = true;
+    for (let descriptor in descriptors)
+        if (!members[descriptor.tag])
+            return descriptor.tag;
+    return null;
+}
+
 function build_urltest_outbound(section, item, urltest_candidate_tags, candidate_types, provider_refs) {
     let urltest_id = item.id;
     let urltest_outbounds = urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags, candidate_types);
@@ -936,7 +950,8 @@ function build_urltest_outbound(section, item, urltest_candidate_tags, candidate
         url: connections.urltest_testing_url(section, urltest_id),
         expected_status: connections.urltest_expected_status(section, urltest_id),
         interval: urltest_check_interval(section, urltest_id),
-        tolerance: int(connections.urltest_tolerance(section, urltest_id), 10),
+        // The core reads 0 as its default of 50 ms.
+        tolerance: max(1, int(connections.urltest_tolerance(section, urltest_id), 10)),
         interrupt_exist_connections: connections.urltest_interrupt_exist_connections(section, urltest_id)
     };
     let providers = provider_tags(provider_refs);
@@ -965,9 +980,9 @@ function build_fallback_group_outbound(section, item, urltest_candidate_tags, ca
             outbounds: level.outbounds
         };
         if (level.mode != "direct") {
-            append_unique_tags(native_level.outbounds, included_group_tags(
+            native_level.outbounds = append_unique_tags(included_group_tags(
                 connections.fallback_level_include_groups(group_id, level.id), group_tags_by_name, item.tag
-            ));
+            ), level.outbounds);
             if (length(providers) > 0)
                 native_level.providers = providers;
             merge_object(native_level, fallback_level_provider_filter(group_id, level.id));
@@ -1009,7 +1024,8 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         push(descriptors, { kind: item.kind, tag: item.tag, outbound });
     }
 
-    for (let descriptor in usable_group_descriptors(descriptors, group_tags)) {
+    let groups = usable_group_descriptors(descriptors, group_tags);
+    for (let descriptor in groups) {
         push(config.outbounds, descriptor.outbound);
         push(descriptor.kind == "urltest" ? urltest_tags : fallback_tags, descriptor.tag);
     }
@@ -1021,10 +1037,9 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     for (let tag in selector_tags)
         push(selector_outbounds, tag);
 
-    if (length(urltest_tags) > 0 || length(fallback_tags) > 0) {
-        selector_default = length(urltest_tags) > 0 ? urltest_tags[0]
-            : fallback_tags[0];
-    }
+    let group_default = default_group_tag(groups);
+    if (group_default != null)
+        selector_default = group_default;
 
     let selector = {
         type: "selector",
@@ -1338,12 +1353,12 @@ function add_section_dns_matcher_rule(config, section, matchers, rewrite_ttl) {
         apply_matchers(rule, device_matchers);
         rule.action = "route";
         rule.server = section_dns_server(section);
-        if (rule.server == runtime_constants.FAKEIP_DNS_SERVER_TAG) {
+        if (rule.server == runtime_constants.FAKEIP_DNS_SERVER_TAG)
             rule.query_type = FAKEIP_QUERY_TYPES;
-            // A query has no destination port, and a FakeIP answer is in no subnet of a set.
-            if (rule.rule_set != null)
-                rule.rule_set_domain_only = true;
-        }
+        // A query has no destination address or port, so only the domains of a set can match it;
+        // the core refuses a set of subnets alone in a DNS rule that reads the whole set.
+        if (rule.rule_set != null)
+            rule.rule_set_domain_only = true;
         rule.rewrite_ttl = rewrite_ttl;
         push_dns_matcher_rule(config, rule);
     }
@@ -1595,11 +1610,6 @@ function add_combined_route_for_section(config, section) {
     let target = runtime_route.target(section, outbound_tag(section_name));
     if (target.unsupported)
         runtime_generate_unsupported(target.unsupported);
-    // What no section matched, a connection that carries only a domain included, leaves by the
-    // last section with the flag.
-    if (connections.is_connections_action(option(section, "action", "")) &&
-        bool_option(section, "default_route", false))
-        config.route.final = target.outbound;
     let base_rule = { action: target.action };
     if (target.outbound)
         base_rule.outbound = target.outbound;
@@ -1683,8 +1693,11 @@ function add_service_route_rules(config, sections) {
             domain: runtime_constants.CHECK_PROXY_IP_DOMAIN
         });
     }
+    // The check service answers on 8443 that a request came through Forkop. Diagnostics shows
+    // the router's address there as the direct one, so no section may take the request.
     push(config.route.rules, {
-        action: "route-options",
+        action: "route",
+        outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
         domain: runtime_constants.FAKEIP_TEST_DOMAIN,
         override_port: 8443
     });

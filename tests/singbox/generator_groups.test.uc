@@ -93,6 +93,16 @@ t.test("each URLTest group carries its own settings, in list order in the select
     t.eq(slice(selector.outbounds, 0, 2), [ "proxy/Fast URLTest", "proxy/Stable URLTest" ]);
 });
 
+t.test("a latency difference of 0 reaches the core as the smallest it honours", () => {
+    let config = build({
+        settings: { log_level: "warn" },
+        section: [ { ".name": "proxy", enabled: "1", action: "connection" } ],
+        connection_link: fixture.links("proxy", LINKS),
+        urltest: [ { ".name": "fast", section: "proxy", name: "Fast", tolerance: "0" } ]
+    });
+    t.eq(q.outbound(config, "proxy/Fast").tolerance, 1);
+});
+
 function fallback_fixture() {
     return {
         settings: { dns_server: [ "77.88.8.8" ], bootstrap_dns_server: [ "77.88.8.8" ] },
@@ -155,6 +165,27 @@ t.test("a Fallback group is one native outbound whose levels claim each node onc
     for (let outbound in config.outbounds)
         t.ok(index(outbound.tag, "proxy-fallback-pg_main-level-") != 0, "no nested level outbounds");
     t.eq(q.outbound(config, "proxy").default, group.tag, "the selector defaults to its first Fallback group");
+});
+
+t.test("the selector defaults to the Fallback that holds a URLTest, not to the URLTest alone", () => {
+    let data = {
+        settings: { log_level: "warn" },
+        section: [ { ".name": "proxy", enabled: "1", action: "connection" } ],
+        connection_link: fixture.links("proxy", LINKS),
+        urltest: [ { ".name": "fast", section: "proxy", name: "Fast", server_filter_mode: "all" } ],
+        fallback_group: [ { ".name": "backup", section: "proxy", name: "Backup" } ],
+        fallback_level: [ { ".name": "level", group: "backup", name: "Primary", server_filter_mode: "include", include_groups: [ "Fast" ] } ]
+    };
+    let selector = q.outbound(build(data), "proxy");
+    t.eq(selector.default, "proxy/Backup");
+    t.eq(selector.outbounds[0], "proxy/Fast", "the order of the groups stays");
+
+    data.fallback_level[0].include_outbounds = [ "first" ];
+    t.eq(q.outbound(build(data), "proxy/Backup").groups[0].outbounds, [ "proxy/Fast", "proxy/first" ],
+        "a level puts its URLTest before its own servers");
+
+    data.fallback_level[0].include_groups = null;
+    t.eq(q.outbound(build(data), "proxy").default, "proxy/Fast", "a URLTest no Fallback holds stays the default");
 });
 
 t.done();

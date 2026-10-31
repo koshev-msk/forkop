@@ -30,12 +30,14 @@ const WARP_PROFILES_MIXED_INBOUND_TAG = "service-warp-in";
 const WARP_PROFILES_MIXED_INBOUND_PORT = 4536;
 const DIRECT_OUTBOUND_TAG = "direct-out";
 const CLASH_API_CONTROLLER_PORT = 9090;
+const CLASH_API_UI_DIRECTORY = "ui";
 // The mark sing-box puts on its own traffic is the one the nft table lets pass.
 const OUTBOUND_MARK = hex(require("core.constants").NFT_OUTBOUND_MARK);
 // The cache file keeps a name for every address until the range wraps, about 170 bytes each in
-// tmpfs, hence 65536 addresses a family.
+// tmpfs, hence 65536 addresses a family. Both come from the benchmarking blocks: Chromium counts
+// fc00::/7 as the local network and asks the user before a public page may reach it.
 const FAKEIP_INET4_RANGE = "198.18.0.0/16";
-const FAKEIP_INET6_RANGE = "fc00::/112";
+const FAKEIP_INET6_RANGE = "2001:2::/112";
 
 const URLTEST_DEFAULT_IDLE_TIMEOUT = "30m";
 const CHECK_PROXY_IP_DOMAIN = "ip.podkop.fyi";
@@ -166,6 +168,7 @@ return {
     WARP_PROFILES_MIXED_INBOUND_PORT,
     DIRECT_OUTBOUND_TAG,
     CLASH_API_CONTROLLER_PORT,
+    CLASH_API_UI_DIRECTORY,
     OUTBOUND_MARK,
     FAKEIP_INET4_RANGE,
     FAKEIP_INET6_RANGE,

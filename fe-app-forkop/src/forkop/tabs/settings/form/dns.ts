@@ -11,7 +11,7 @@ import {
 import { createStaticHostsOption } from '../staticHosts';
 import { validateRequiredSingBoxDuration } from '../../../../validators/validateSingBoxDuration';
 import { required } from '../../../cbi/required';
-import { cidrField, wholeNumberField } from '../../../../validators/fields';
+import { wholeNumberField } from '../../../../validators/fields';
 
 export function addDnsOptions(section: CBISection) {
   const dnsOption = section.option(
@@ -79,26 +79,6 @@ export function addDnsOptions(section: CBISection) {
   o.value('ipv6_only', _('IPv6 only'));
   o.default = 'prefer_ipv4';
   o.rmempty = false;
-
-  o = section.option(
-    form.Value,
-    'fakeip_range',
-    _('FakeIP Range'),
-    _('IPv4 subnet used for FakeIP DNS mapping (default: 198.18.0.0/16)'),
-  );
-  o.placeholder = '198.18.0.0/16';
-  o.rmempty = true;
-  o.validate = cidrField(4);
-
-  o = section.option(
-    form.Value,
-    'fakeip6_range',
-    _('FakeIP IPv6 Range'),
-    _('IPv6 subnet used for FakeIP DNS mapping (default: fc00::/112)'),
-  );
-  o.placeholder = 'fc00::/112';
-  o.rmempty = true;
-  o.validate = cidrField(6);
 
   o = section.option(
     form.Flag,

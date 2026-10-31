@@ -382,7 +382,7 @@ export function createSectionContent(section: CBISection) {
     InterfaceSettingsDynamicList,
     'interfaces',
     _('Network Interface'),
-    _('An OpenWrt network interface'),
+    _('An OpenWrt uplink or tunnel interface'),
   );
   o.depends('action', 'connection');
   o.rmempty = true;
@@ -536,20 +536,6 @@ export function createSectionContent(section: CBISection) {
     return renderChildItemLabel(this, section_id, itemId);
   };
   o.onListChange = refreshLiveChoiceWidgets;
-
-  o = section.taboption(
-    'settings',
-    form.Flag,
-    'default_route',
-    _('Use as default route'),
-    _(
-      'Send all traffic not matched by other sections through this section. If several sections enable this, the last one wins.',
-    ),
-  );
-  o.depends('action', 'connection');
-  o.default = '0';
-  o.rmempty = false;
-  o.modalonly = true;
 
   const destinationOption = addDestinationField(
     section,
