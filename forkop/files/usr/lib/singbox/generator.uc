@@ -1595,6 +1595,11 @@ function add_combined_route_for_section(config, section) {
     let target = runtime_route.target(section, outbound_tag(section_name));
     if (target.unsupported)
         runtime_generate_unsupported(target.unsupported);
+    // What no section matched, a connection that carries only a domain included, leaves by the
+    // last section with the flag.
+    if (connections.is_connections_action(option(section, "action", "")) &&
+        bool_option(section, "default_route", false))
+        config.route.final = target.outbound;
     let base_rule = { action: target.action };
     if (target.outbound)
         base_rule.outbound = target.outbound;

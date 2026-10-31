@@ -537,6 +537,20 @@ export function createSectionContent(section: CBISection) {
   };
   o.onListChange = refreshLiveChoiceWidgets;
 
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'default_route',
+    _('Use as default route'),
+    _(
+      'Send all traffic not matched by other sections through this section. If several sections enable this, the last one wins.',
+    ),
+  );
+  o.depends('action', 'connection');
+  o.default = '0';
+  o.rmempty = false;
+  o.modalonly = true;
+
   const destinationOption = addDestinationField(
     section,
     'destinations',

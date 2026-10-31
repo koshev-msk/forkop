@@ -39,6 +39,26 @@ t.test("the FakeIP DNS server uses the built-in subnets unless the settings give
     t.eq([ server.inet4_range, server.inet6_range ], [ "198.18.0.0/15", "fd00:18::/64" ]);
 });
 
+function final_route(sections) {
+    return build({ settings: settings(), section: sections, server: [] }).route.final;
+}
+
+t.test("route.final is the last connection section with default_route, direct otherwise", () => {
+    let first = { ".name": "first", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "first.example" };
+    let second = { ".name": "second", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "second.example" };
+
+    t.eq(final_route([ first, second ]), "direct-out", "without the flag unmatched traffic leaves directly");
+    t.eq(final_route([ { ...first, default_route: "1" }, second ]), "first");
+    t.eq(final_route([ { ...first, default_route: "1" }, { ...second, default_route: "1" } ]), "second", "the last one wins");
+    t.eq(final_route([ { ...first, default_route: "0" }, second ]), "direct-out", "a cleared flag does nothing");
+});
+
+t.test("default_route is ignored outside connection sections", () => {
+    let proxy = { ".name": "proxy", enabled: "1", action: "connection", outbound_jsons: [ "{\"type\":\"direct\"}" ], destinations: "proxy.example" };
+    let bypass = { ".name": "bypass", enabled: "1", action: "bypass", destinations: "bypass.example", default_route: "1" };
+    t.eq(final_route([ proxy, bypass ]), "direct-out");
+});
+
 t.test("a lone connection section without sources leaves nothing usable", () => {
     let e = t.throws(() => build({
         settings: settings(),

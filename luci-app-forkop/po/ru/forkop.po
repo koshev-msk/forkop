@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: FORKOP\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-29 05:17+0000\n"
-"PO-Revision-Date: 2026-10-29 05:17+0000\n"
+"POT-Creation-Date: 2026-10-31 04:43+0000\n"
+"PO-Revision-Date: 2026-10-31 04:43+0000\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2177,6 +2177,9 @@ msgstr "Выбирает узел с наименьшей задержкой"
 msgid "Self-signed"
 msgstr "Самоподписанный"
 
+msgid "Send all traffic not matched by other sections through this section. If several sections enable this, the last one wins."
+msgstr "Направлять через эту секцию весь трафик, не попавший в другие секции. Если опция включена в нескольких секциях, действует последняя."
+
 msgid "Send BitTorrent traffic past the proxy"
 msgstr "Пропускать торрент-трафик мимо прокси"
 
@@ -2800,6 +2803,9 @@ msgstr "Используйте IPv4 подсеть в формате CIDR"
 
 msgid "Use an IPv6 CIDR subnet"
 msgstr "Используйте IPv6 подсеть в формате CIDR"
+
+msgid "Use as default route"
+msgstr "Использовать как маршрут по умолчанию"
 
 msgid "Use pin-sha256 instead of a certificate SHA-256"
 msgstr "Нужен pin-sha256, а не SHA-256 сертификата"
